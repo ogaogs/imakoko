@@ -4,21 +4,20 @@ import (
 	"testing"
 )
 
-func TestFetchNews(t *testing.T) {
-	tests := []struct {
-		name string
-		want int
-	}{
-		{name: "success",
-			want: 200},
+func TestGetHotNews(t *testing.T) {
+	items, err := getNews()
+	if err != nil {
+		t.Fatalf("getHotNews() error = %v", err)
+	}
+	if len(items) == 0 {
+		t.Error("getHotNews() returned no items")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			status := fetchNews()
-			if (status) != tt.want {
-				t.Errorf("fetchNews() = %v, want %v", status, tt.want)
-			}
-		})
+	// 最初のアイテムの内容を確認
+	if items[0].Title == "" {
+		t.Error("First item has empty title")
+	}
+	if items[0].Link == "" {
+		t.Error("First item has empty link")
 	}
 }
