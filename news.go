@@ -9,6 +9,7 @@ import (
 )
 
 const RSSURL = "https://hnrss.org/frontpage"
+const maxResponseSize = 10 * 1024 * 1024 // 10MB limit
 
 var httpClient = &http.Client{
 	Timeout: 30 * time.Second,
@@ -38,7 +39,7 @@ func fetchHNRSS() ([]byte, error) {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
