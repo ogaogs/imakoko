@@ -13,7 +13,7 @@ func TestGetHotNews(t *testing.T) {
 		t.Error("getHotNews() returned no items")
 	}
 
-	// 最初のアイテムの内容を確認
+	// check the first item
 	if items[0].Title == "" {
 		t.Error("First item has empty title")
 	}

@@ -40,7 +40,7 @@ func fetchHNRSS() ([]byte, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to response body: %w", err)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 	return body, nil
 }
@@ -49,7 +49,7 @@ func parseNews(data []byte) ([]Item, error) {
 	var rss RSS
 	var items []Item
 	if err := xml.Unmarshal(data, &rss); err != nil {
-		return nil, fmt.Errorf("Error parsing XML: %w", err)
+		return nil, fmt.Errorf("error parsing XML: %w", err)
 	}
 
 	for _, item := range rss.Channel.Items {
