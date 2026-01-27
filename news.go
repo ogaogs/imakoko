@@ -8,7 +8,6 @@ import (
 	"time"
 )
 
-const RSSURL = "https://hnrss.org/frontpage"
 const maxResponseSize = 10 * 1024 * 1024 // 10MB limit
 
 var httpClient = &http.Client{
@@ -28,8 +27,8 @@ type Item struct {
 	Link  string `xml:"link"`
 }
 
-func fetchHNRSS() ([]byte, error) {
-	resp, err := httpClient.Get(RSSURL)
+func fetchHNRSS(rssURL string) ([]byte, error) {
+	resp, err := httpClient.Get(rssURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch news: %w", err)
 	}
@@ -55,8 +54,8 @@ func parseNews(data []byte) ([]Item, error) {
 	return rss.Channel.Items, nil
 }
 
-func getNews() ([]Item, error) {
-	data, err := fetchHNRSS()
+func getNews(rssURL string) ([]Item, error) {
+	data, err := fetchHNRSS(rssURL)
 	if err != nil {
 		return nil, err
 	}
