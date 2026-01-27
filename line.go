@@ -15,14 +15,16 @@ type MessageSender interface {
 
 // lineClient implements MessageSender using LINE API
 type lineClient struct {
+	httpClient   *http.Client
 	apiURL       string
 	accessToken  string
 	targetUserID string
 }
 
 // NewLineClient creates a new LINE client
-func NewLineClient(apiURL, accessToken, targetUserID string) MessageSender {
+func NewLineClient(httpClient *http.Client, apiURL, accessToken, targetUserID string) MessageSender {
 	return &lineClient{
+		httpClient:   httpClient,
 		apiURL:       apiURL,
 		accessToken:  accessToken,
 		targetUserID: targetUserID,
@@ -31,7 +33,7 @@ func NewLineClient(apiURL, accessToken, targetUserID string) MessageSender {
 
 // Send implements MessageSender interface for lineClient
 func (c *lineClient) Send(messages []string) error {
-	return sendLineMessage(c.apiURL, c.accessToken, messages, c.targetUserID)
+	return sendLineMessage(c.httpClient, c.apiURL, c.accessToken, messages, c.targetUserID)
 }
 
 type LineMessages struct {
@@ -59,7 +61,7 @@ func sendBatchLineMessage(sender MessageSender, messages []string) error {
 	return nil
 }
 
-func sendLineMessage(apiURL string, accessToken string, messages []string, sendTo string) error {
+func sendLineMessage(httpClient *http.Client, apiURL string, accessToken string, messages []string, sendTo string) error {
 	contents := make([]LineContent, len(messages))
 	for i, msg := range messages {
 		contents[i] = LineContent{

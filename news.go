@@ -10,7 +10,7 @@ import (
 
 const maxResponseSize = 10 * 1024 * 1024 // 10MB limit
 
-var httpClient = &http.Client{
+var rssHTTPClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
@@ -28,7 +28,7 @@ type Item struct {
 }
 
 func fetchHNRSS(rssURL string) ([]byte, error) {
-	resp, err := httpClient.Get(rssURL)
+	resp, err := rssHTTPClient.Get(rssURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch news: %w", err)
 	}

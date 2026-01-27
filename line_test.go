@@ -51,7 +51,7 @@ func TestSendLineMessage(t *testing.T) {
 	defer server.Close()
 
 	messages := []string{"Test Message"}
-	err := sendLineMessage(server.URL, "test-token", messages, "test-user-id")
+	err := sendLineMessage(http.DefaultClient, server.URL, "test-token", messages, "test-user-id")
 	require.NoError(t, err)
 }
 
@@ -174,7 +174,7 @@ func TestNewLineClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewLineClient(tt.apiURL, tt.accessToken, tt.targetUserID)
+			client := NewLineClient(http.DefaultClient, tt.apiURL, tt.accessToken, tt.targetUserID)
 
 			require.NotNil(t, client)
 			// Verify it implements MessageSender interface
@@ -196,7 +196,7 @@ func TestLineClient_Send(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewLineClient(server.URL, "test-token", "U123456")
+	client := NewLineClient(http.DefaultClient, server.URL, "test-token", "U123456")
 
 	tests := []struct {
 		name     string
@@ -269,7 +269,7 @@ func TestSendLineMessage_ErrorCases(t *testing.T) {
 			defer server.Close()
 
 			messages := []string{"Test message"}
-			err := sendLineMessage(server.URL, "test-token", messages, "U123456")
+			err := sendLineMessage(http.DefaultClient, server.URL, "test-token", messages, "U123456")
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectError)
@@ -280,7 +280,7 @@ func TestSendLineMessage_ErrorCases(t *testing.T) {
 func TestSendLineMessage_NetworkError(t *testing.T) {
 	// Use invalid URL to trigger network error
 	messages := []string{"Test message"}
-	err := sendLineMessage("http://invalid-host-that-does-not-exist:99999", "test-token", messages, "U123456")
+	err := sendLineMessage(http.DefaultClient, "http://invalid-host-that-does-not-exist:99999", "test-token", messages, "U123456")
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to send request")

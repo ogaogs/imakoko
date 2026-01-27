@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+	"net/http"
+	"time"
 )
 
 func main() {
@@ -21,7 +23,8 @@ func main() {
 	messages := FormatHackerNews(news)
 
 	// Send LINE messages
-	client := NewLineClient(config.LineAPIURL, config.LineAccessToken, config.TargetUserID)
+	lineHTTPClient := &http.Client{Timeout: 30 * time.Second}
+	client := NewLineClient(lineHTTPClient, config.LineAPIURL, config.LineAccessToken, config.TargetUserID)
 	err = sendBatchLineMessage(client, messages)
 	if err != nil {
 		log.Fatalf("Failed to send LINE message: %v", err)
