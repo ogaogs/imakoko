@@ -59,7 +59,7 @@ func sendBatchLineMessage(sender MessageSender, messages []string) error {
 	return nil
 }
 
-func sendLineMessage(apiURL string, accessToken string, messages []string, send_to string) error {
+func sendLineMessage(apiURL string, accessToken string, messages []string, sendTo string) error {
 	contents := make([]LineContent, len(messages))
 	for i, msg := range messages {
 		contents[i] = LineContent{
@@ -69,7 +69,7 @@ func sendLineMessage(apiURL string, accessToken string, messages []string, send_
 	}
 
 	payload := LineMessages{
-		SendTo:   send_to,
+		SendTo:   sendTo,
 		Messages: contents,
 	}
 
