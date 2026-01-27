@@ -4,8 +4,10 @@ import (
 	"testing"
 )
 
+const testURL = "https://hnrss.org/frontpage"
+
 func TestGetHotNews(t *testing.T) {
-	items, err := getNews()
+	items, err := getNews(testURL)
 	if err != nil {
 		t.Fatalf("getHotNews() error = %v", err)
 	}
