@@ -28,6 +28,7 @@ func TestSendLineMessage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := sendLineMessage(server.URL, "test-token", "Test Message")
+	messages := []string{"Test Message"}
+	err := sendLineMessage(server.URL, "test-token", messages, "test-user-id")
 	require.NoError(t, err)
 }
