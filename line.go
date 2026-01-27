@@ -11,6 +11,9 @@ import (
 // LINE API message character limit
 const MaxMessageLength = 5000
 
+// Maximum size for error response body
+const maxErrorResponseSize = 4 * 1024 // 4KB
+
 // MessageSender defines the capability to send messages
 type MessageSender interface {
 	Send(messages []string) error
@@ -101,7 +104,7 @@ func sendLineMessage(httpClient *http.Client, apiURL string, accessToken string,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorResponseSize))
 		return fmt.Errorf("LINE API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
