@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-// Config はアプリケーション設定を保持する
+// Config holds application settings
 type Config struct {
 	LineAccessToken string
 	TargetUserID    string
@@ -14,7 +14,7 @@ type Config struct {
 	RSSURL          string
 }
 
-// LoadConfig は環境変数から設定を読み込む
+// LoadConfig reads configuration from environment variables
 func LoadConfig() (*Config, error) {
 	// Required environment variables
 	accessToken := os.Getenv("LINE_ACCESS_TOKEN")
@@ -46,7 +46,7 @@ func LoadConfig() (*Config, error) {
 	}, nil
 }
 
-// String は設定の文字列表現を返す（トークンはマスキング）
+// String returns the string representation of the config (token is masked)
 func (c *Config) String() string {
 	maskedToken := "***"
 	if len(c.LineAccessToken) > 4 {
