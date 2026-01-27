@@ -8,6 +8,9 @@ import (
 	"net/http"
 )
 
+// LINE API message character limit
+const MaxMessageLength = 5000
+
 // MessageSender defines the capability to send messages
 type MessageSender interface {
 	Send(messages []string) error
@@ -64,6 +67,9 @@ func sendBatchLineMessage(sender MessageSender, messages []string) error {
 func sendLineMessage(httpClient *http.Client, apiURL string, accessToken string, messages []string, sendTo string) error {
 	contents := make([]LineContent, len(messages))
 	for i, msg := range messages {
+		if len(msg) > MaxMessageLength {
+			return fmt.Errorf("message %d exceeds LINE's %d character limit (has %d characters)", i+1, MaxMessageLength, len(msg))
+		}
 		contents[i] = LineContent{
 			Type: "text",
 			Text: msg,

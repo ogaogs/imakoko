@@ -285,3 +285,49 @@ func TestSendLineMessage_NetworkError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to send request")
 }
+
+func TestSendLineMessage_MessageLengthValidation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"sentMessages": []}`))
+	}))
+	defer server.Close()
+
+	tests := []struct {
+		name        string
+		messages    []string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "accepts message at exactly 5000 characters",
+			messages:    []string{string(make([]byte, MaxMessageLength))},
+			expectError: false,
+		},
+		{
+			name:        "rejects message exceeding 5000 characters",
+			messages:    []string{string(make([]byte, MaxMessageLength+1))},
+			expectError: true,
+			errorMsg:    "message 1 exceeds LINE's 5000 character limit",
+		},
+		{
+			name:        "rejects second message exceeding limit",
+			messages:    []string{"short", string(make([]byte, MaxMessageLength+100))},
+			expectError: true,
+			errorMsg:    "message 2 exceeds LINE's 5000 character limit",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sendLineMessage(http.DefaultClient, server.URL, "test-token", tt.messages, "U123456")
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
