@@ -11,7 +11,8 @@ A Go application that fetches the latest news from Hacker News via RSS and sends
 ## Project Structure
 
 ```
-main.go          - Entry point (load config → fetch news → format → send via LINE)
+main.go          - Entry point
+runner.go        - Core business logic (fetch news → format → send via LINE)
 config.go        - Load and validate configuration from environment variables
 news.go          - RSS feed fetching and parsing
 formatter.go     - Convert news items to LINE message format

@@ -88,9 +88,9 @@ func TestLoadConfig(t *testing.T) {
 
 func TestConfig_String(t *testing.T) {
 	tests := []struct {
-		name          string
-		token         string
-		expectedMask  string
+		name         string
+		token        string
+		expectedMask string
 	}{
 		{
 			name:         "empty token",
