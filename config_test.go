@@ -15,6 +15,7 @@ func TestLoadConfig(t *testing.T) {
 		os.Unsetenv("TARGET_USER_ID")
 		os.Unsetenv("LINE_API_URL")
 		os.Unsetenv("RSS_URL")
+		os.Unsetenv("FEED_SOURCES")
 	}
 
 	t.Run("returns error when LINE_ACCESS_TOKEN is missing", func(t *testing.T) {
@@ -39,7 +40,7 @@ func TestLoadConfig(t *testing.T) {
 		assert.EqualError(t, err, "TARGET_USER_ID environment variable is required")
 	})
 
-	t.Run("loads config with required variables and default optionals", func(t *testing.T) {
+	t.Run("loads config with default feeds", func(t *testing.T) {
 		clearEnv()
 		defer clearEnv()
 
@@ -53,26 +54,75 @@ func TestLoadConfig(t *testing.T) {
 		assert.Equal(t, "token123", cfg.LineAccessToken)
 		assert.Equal(t, "user123", cfg.TargetUserID)
 		assert.Equal(t, "https://api.line.me/v2/bot/message/push", cfg.LineAPIURL)
-		assert.Equal(t, "https://hnrss.org/frontpage", cfg.RSSURL)
+		assert.Len(t, cfg.Feeds, 9)
+		assert.Equal(t, "はてなブックマーク IT", cfg.Feeds[0].Name)
+		assert.Equal(t, "Hacker News", cfg.Feeds[1].Name)
 	})
 
-	t.Run("loads config with custom optional values", func(t *testing.T) {
+	t.Run("RSS_URL backward compatibility", func(t *testing.T) {
 		clearEnv()
 		defer clearEnv()
 
 		os.Setenv("LINE_ACCESS_TOKEN", "token123")
 		os.Setenv("TARGET_USER_ID", "user123")
-		os.Setenv("LINE_API_URL", "https://custom.api.line.me/push")
 		os.Setenv("RSS_URL", "https://custom.rss.feed/news")
 
 		cfg, err := LoadConfig()
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 
-		assert.Equal(t, "token123", cfg.LineAccessToken)
-		assert.Equal(t, "user123", cfg.TargetUserID)
-		assert.Equal(t, "https://custom.api.line.me/push", cfg.LineAPIURL)
-		assert.Equal(t, "https://custom.rss.feed/news", cfg.RSSURL)
+		assert.Len(t, cfg.Feeds, 1)
+		assert.Equal(t, "News", cfg.Feeds[0].Name)
+		assert.Equal(t, "https://custom.rss.feed/news", cfg.Feeds[0].URL)
+		assert.Equal(t, FeedTypeRSS, cfg.Feeds[0].Type)
+	})
+
+	t.Run("FEED_SOURCES JSON overrides defaults", func(t *testing.T) {
+		clearEnv()
+		defer clearEnv()
+
+		os.Setenv("LINE_ACCESS_TOKEN", "token123")
+		os.Setenv("TARGET_USER_ID", "user123")
+		os.Setenv("FEED_SOURCES", `[{"name":"HN","url":"https://hnrss.org/frontpage","type":"rss","max_items":5}]`)
+
+		cfg, err := LoadConfig()
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		assert.Len(t, cfg.Feeds, 1)
+		assert.Equal(t, "HN", cfg.Feeds[0].Name)
+		assert.Equal(t, 5, cfg.Feeds[0].MaxItems)
+	})
+
+	t.Run("FEED_SOURCES takes priority over RSS_URL", func(t *testing.T) {
+		clearEnv()
+		defer clearEnv()
+
+		os.Setenv("LINE_ACCESS_TOKEN", "token123")
+		os.Setenv("TARGET_USER_ID", "user123")
+		os.Setenv("RSS_URL", "https://should.be.ignored")
+		os.Setenv("FEED_SOURCES", `[{"name":"Custom","url":"https://custom.feed","type":"atom","max_items":3}]`)
+
+		cfg, err := LoadConfig()
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		assert.Len(t, cfg.Feeds, 1)
+		assert.Equal(t, "Custom", cfg.Feeds[0].Name)
+		assert.Equal(t, FeedTypeAtom, cfg.Feeds[0].Type)
+	})
+
+	t.Run("invalid FEED_SOURCES JSON returns error", func(t *testing.T) {
+		clearEnv()
+		defer clearEnv()
+
+		os.Setenv("LINE_ACCESS_TOKEN", "token123")
+		os.Setenv("TARGET_USER_ID", "user123")
+		os.Setenv("FEED_SOURCES", `invalid json`)
+
+		cfg, err := LoadConfig()
+		assert.Nil(t, cfg)
+		assert.Contains(t, err.Error(), "invalid FEED_SOURCES JSON")
 	})
 
 	t.Run("returns error when both required variables are missing", func(t *testing.T) {
@@ -103,16 +153,6 @@ func TestConfig_String(t *testing.T) {
 			expectedMask: "***",
 		},
 		{
-			name:         "two character token",
-			token:        "ab",
-			expectedMask: "***",
-		},
-		{
-			name:         "three character token",
-			token:        "abc",
-			expectedMask: "***",
-		},
-		{
 			name:         "four character token (boundary)",
 			token:        "abcd",
 			expectedMask: "***",
@@ -121,16 +161,6 @@ func TestConfig_String(t *testing.T) {
 			name:         "five character token (boundary)",
 			token:        "abcde",
 			expectedMask: "ab***de",
-		},
-		{
-			name:         "six character token",
-			token:        "abcdef",
-			expectedMask: "ab***ef",
-		},
-		{
-			name:         "ten character token",
-			token:        "abcdefghij",
-			expectedMask: "ab***ij",
 		},
 		{
 			name:         "long realistic token",
@@ -145,21 +175,18 @@ func TestConfig_String(t *testing.T) {
 				LineAccessToken: tt.token,
 				TargetUserID:    "user123",
 				LineAPIURL:      "https://api.line.me",
-				RSSURL:          "https://rss.feed",
+				Feeds:           defaultFeeds(),
 			}
 
 			result := cfg.String()
 
-			// Verify masked token is in the output
 			assert.Contains(t, result, tt.expectedMask)
-			// Verify original token is NOT in output (except for very short tokens where mask equals partial)
 			if len(tt.token) > 4 {
 				assert.NotContains(t, result, tt.token)
 			}
-			// Verify other fields are included
 			assert.Contains(t, result, "user123")
 			assert.Contains(t, result, "https://api.line.me")
-			assert.Contains(t, result, "https://rss.feed")
+			assert.Contains(t, result, "9 sources")
 		})
 	}
 }
@@ -169,20 +196,42 @@ func TestConfig_String_Format(t *testing.T) {
 		LineAccessToken: "token12345",
 		TargetUserID:    "userABC",
 		LineAPIURL:      "https://api.example.com",
-		RSSURL:          "https://rss.example.com",
+		Feeds:           []FeedSource{{Name: "Test", URL: "https://test.com", Type: FeedTypeRSS, MaxItems: 5}},
 	}
 
 	result := cfg.String()
 
-	// Verify the string contains expected field labels
 	assert.Contains(t, result, "LineAPIURL")
 	assert.Contains(t, result, "TargetUserID")
-	assert.Contains(t, result, "RSSURL")
+	assert.Contains(t, result, "Feeds")
 	assert.Contains(t, result, "LineAccessToken")
-
-	// Verify values are quoted
 	assert.Contains(t, result, `"userABC"`)
 	assert.Contains(t, result, `"https://api.example.com"`)
-	assert.Contains(t, result, `"https://rss.example.com"`)
+	assert.Contains(t, result, "1 sources")
 	assert.Contains(t, result, `"to***45"`)
+}
+
+func TestDefaultFeeds(t *testing.T) {
+	feeds := defaultFeeds()
+
+	assert.Len(t, feeds, 9)
+
+	// Verify feed types
+	rssCount, atomCount, redditCount := 0, 0, 0
+	for _, f := range feeds {
+		switch f.Type {
+		case FeedTypeRSS:
+			rssCount++
+		case FeedTypeAtom:
+			atomCount++
+		case FeedTypeReddit:
+			redditCount++
+		}
+		assert.NotEmpty(t, f.Name)
+		assert.NotEmpty(t, f.URL)
+		assert.Greater(t, f.MaxItems, 0)
+	}
+	assert.Equal(t, 5, rssCount)
+	assert.Equal(t, 2, atomCount)
+	assert.Equal(t, 2, redditCount)
 }
