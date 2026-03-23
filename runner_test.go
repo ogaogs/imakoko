@@ -24,6 +24,14 @@ const testRSSResponse = `<?xml version="1.0" encoding="UTF-8"?>
   </channel>
 </rss>`
 
+const testAtomResponse = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <title>Atom Article</title>
+    <link href="https://example.com/atom1" rel="alternate"/>
+  </entry>
+</feed>`
+
 func TestRun_Success(t *testing.T) {
 	// Mock RSS server
 	rssServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,6 +40,14 @@ func TestRun_Success(t *testing.T) {
 		w.Write([]byte(testRSSResponse))
 	}))
 	defer rssServer.Close()
+
+	// Mock Atom server
+	atomServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(testAtomResponse))
+	}))
+	defer atomServer.Close()
 
 	// Mock LINE API server
 	lineServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +60,10 @@ func TestRun_Success(t *testing.T) {
 		LineAccessToken: "test-token",
 		TargetUserID:    "test-user",
 		LineAPIURL:      lineServer.URL,
-		RSSURL:          rssServer.URL,
+		Feeds: []FeedSource{
+			{Name: "RSS Feed", URL: rssServer.URL, Type: FeedTypeRSS, MaxItems: 10},
+			{Name: "Atom Feed", URL: atomServer.URL, Type: FeedTypeAtom, MaxItems: 10},
+		},
 	}
 
 	err := run(config)
@@ -52,17 +71,19 @@ func TestRun_Success(t *testing.T) {
 }
 
 func TestRun_RSSFetchError(t *testing.T) {
-	// Use a server that returns an error
-	rssServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// All feeds return errors
+	failServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
-	defer rssServer.Close()
+	defer failServer.Close()
 
 	config := &Config{
 		LineAccessToken: "test-token",
 		TargetUserID:    "test-user",
 		LineAPIURL:      "http://localhost:0",
-		RSSURL:          rssServer.URL,
+		Feeds: []FeedSource{
+			{Name: "Bad Feed", URL: failServer.URL, Type: FeedTypeRSS, MaxItems: 10},
+		},
 	}
 
 	err := run(config)
@@ -70,8 +91,40 @@ func TestRun_RSSFetchError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to get news")
 }
 
+func TestRun_PartialFeedFailure(t *testing.T) {
+	// One good feed, one bad
+	rssServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(testRSSResponse))
+	}))
+	defer rssServer.Close()
+
+	failServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer failServer.Close()
+
+	lineServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`))
+	}))
+	defer lineServer.Close()
+
+	config := &Config{
+		LineAccessToken: "test-token",
+		TargetUserID:    "test-user",
+		LineAPIURL:      lineServer.URL,
+		Feeds: []FeedSource{
+			{Name: "Good Feed", URL: rssServer.URL, Type: FeedTypeRSS, MaxItems: 10},
+			{Name: "Bad Feed", URL: failServer.URL, Type: FeedTypeRSS, MaxItems: 10},
+		},
+	}
+
+	err := run(config)
+	require.NoError(t, err)
+}
+
 func TestRun_LineSendError(t *testing.T) {
-	// Mock RSS server that returns valid data
 	rssServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/xml")
 		w.WriteHeader(http.StatusOK)
@@ -79,7 +132,6 @@ func TestRun_LineSendError(t *testing.T) {
 	}))
 	defer rssServer.Close()
 
-	// Mock LINE API server that returns an error
 	lineServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"message": "Invalid token"}`))
@@ -90,7 +142,9 @@ func TestRun_LineSendError(t *testing.T) {
 		LineAccessToken: "invalid-token",
 		TargetUserID:    "test-user",
 		LineAPIURL:      lineServer.URL,
-		RSSURL:          rssServer.URL,
+		Feeds: []FeedSource{
+			{Name: "Test Feed", URL: rssServer.URL, Type: FeedTypeRSS, MaxItems: 10},
+		},
 	}
 
 	err := run(config)

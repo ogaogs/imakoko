@@ -1,134 +1,116 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestFormatHackerNews(t *testing.T) {
-	t.Run("empty items returns empty slice", func(t *testing.T) {
-		items := []Item{}
-		result := FormatHackerNews(items)
+func TestFormatNews(t *testing.T) {
+	t.Run("single source formatting", func(t *testing.T) {
+		newsMap := map[string][]NewsItem{
+			"Hacker News": {
+				{Title: "Article One", Link: "https://example.com/1", Source: "Hacker News"},
+				{Title: "Article Two", Link: "https://example.com/2", Source: "Hacker News"},
+			},
+		}
+		feeds := []FeedSource{{Name: "Hacker News", URL: "https://hn.com", Type: FeedTypeRSS, MaxItems: 10, Emoji: "🟧"}}
+
+		result := FormatNews(newsMap, feeds)
+
+		require.Len(t, result, 1)
+		assert.Contains(t, result[0], "🟧 Hacker News")
+		assert.Contains(t, result[0], "1. Article One")
+		assert.Contains(t, result[0], "🔗 https://example.com/1")
+		assert.Contains(t, result[0], "2. Article Two")
+	})
+
+	t.Run("multiple sources in feed order", func(t *testing.T) {
+		newsMap := map[string][]NewsItem{
+			"Source B": {{Title: "B1", Link: "https://b.com", Source: "Source B"}},
+			"Source A": {{Title: "A1", Link: "https://a.com", Source: "Source A"}},
+		}
+		feeds := []FeedSource{
+			{Name: "Source A", URL: "https://a.com", Type: FeedTypeRSS, MaxItems: 10, Emoji: "🅰️"},
+			{Name: "Source B", URL: "https://b.com", Type: FeedTypeRSS, MaxItems: 10, Emoji: "🅱️"},
+		}
+
+		result := FormatNews(newsMap, feeds)
+
+		require.Len(t, result, 2)
+		assert.Contains(t, result[0], "🅰️ Source A")
+		assert.Contains(t, result[1], "🅱️ Source B")
+	})
+
+	t.Run("skips sources with no items", func(t *testing.T) {
+		newsMap := map[string][]NewsItem{
+			"Has Items": {{Title: "Item", Link: "https://item.com", Source: "Has Items"}},
+		}
+		feeds := []FeedSource{
+			{Name: "No Items", URL: "https://empty.com", Type: FeedTypeRSS, MaxItems: 10},
+			{Name: "Has Items", URL: "https://item.com", Type: FeedTypeRSS, MaxItems: 10, Emoji: "✅"},
+		}
+
+		result := FormatNews(newsMap, feeds)
+
+		require.Len(t, result, 1)
+		assert.Contains(t, result[0], "✅ Has Items")
+	})
+
+	t.Run("empty news map returns empty slice", func(t *testing.T) {
+		newsMap := map[string][]NewsItem{}
+		feeds := []FeedSource{{Name: "Empty", URL: "https://e.com", Type: FeedTypeRSS, MaxItems: 10}}
+
+		result := FormatNews(newsMap, feeds)
 
 		assert.Empty(t, result)
-		assert.NotNil(t, result)
 	})
 
-	t.Run("single item formatting", func(t *testing.T) {
-		items := []Item{
-			{Title: "Test Article", Link: "https://example.com/article"},
+	t.Run("truncates at MaxMessageLength", func(t *testing.T) {
+		items := make([]NewsItem, 100)
+		for i := range items {
+			items[i] = NewsItem{
+				Title:  strings.Repeat("A", 100),
+				Link:   "https://example.com/" + strings.Repeat("x", 80),
+				Source: "Big Feed",
+			}
 		}
+		newsMap := map[string][]NewsItem{"Big Feed": items}
+		feeds := []FeedSource{{Name: "Big Feed", URL: "https://big.com", Type: FeedTypeRSS, MaxItems: 100}}
 
-		result := FormatHackerNews(items)
+		result := FormatNews(newsMap, feeds)
 
-		assert.Len(t, result, 1)
-		assert.Equal(t, "1. Test Article\nhttps://example.com/article", result[0])
+		require.Len(t, result, 1)
+		assert.LessOrEqual(t, len(result[0]), MaxMessageLength)
 	})
 
-	t.Run("multiple items with correct numbering", func(t *testing.T) {
-		items := []Item{
-			{Title: "First Article", Link: "https://example.com/1"},
-			{Title: "Second Article", Link: "https://example.com/2"},
-			{Title: "Third Article", Link: "https://example.com/3"},
+	t.Run("format includes proper spacing", func(t *testing.T) {
+		newsMap := map[string][]NewsItem{
+			"Test": {
+				{Title: "First", Link: "https://first.com", Source: "Test"},
+				{Title: "Second", Link: "https://second.com", Source: "Test"},
+			},
 		}
+		feeds := []FeedSource{{Name: "Test", URL: "https://t.com", Type: FeedTypeRSS, MaxItems: 10, Emoji: "🧪"}}
 
-		result := FormatHackerNews(items)
+		result := FormatNews(newsMap, feeds)
 
-		assert.Len(t, result, 3)
-		assert.Equal(t, "1. First Article\nhttps://example.com/1", result[0])
-		assert.Equal(t, "2. Second Article\nhttps://example.com/2", result[1])
-		assert.Equal(t, "3. Third Article\nhttps://example.com/3", result[2])
+		require.Len(t, result, 1)
+		expected := "🧪 Test\n━━━━━━━━━━━━━━\n\n1. First\n🔗 https://first.com\n\n2. Second\n🔗 https://second.com"
+		assert.Equal(t, expected, result[0])
 	})
 
-	t.Run("item with empty title", func(t *testing.T) {
-		items := []Item{
-			{Title: "", Link: "https://example.com/article"},
+	t.Run("fallback emoji when not set", func(t *testing.T) {
+		newsMap := map[string][]NewsItem{
+			"No Emoji": {{Title: "Item", Link: "https://item.com", Source: "No Emoji"}},
 		}
+		feeds := []FeedSource{{Name: "No Emoji", URL: "https://e.com", Type: FeedTypeRSS, MaxItems: 10}}
 
-		result := FormatHackerNews(items)
+		result := FormatNews(newsMap, feeds)
 
-		assert.Len(t, result, 1)
-		assert.Equal(t, "1. \nhttps://example.com/article", result[0])
-	})
-
-	t.Run("item with empty link", func(t *testing.T) {
-		items := []Item{
-			{Title: "Test Article", Link: ""},
-		}
-
-		result := FormatHackerNews(items)
-
-		assert.Len(t, result, 1)
-		assert.Equal(t, "1. Test Article\n", result[0])
-	})
-
-	t.Run("item with both empty title and link", func(t *testing.T) {
-		items := []Item{
-			{Title: "", Link: ""},
-		}
-
-		result := FormatHackerNews(items)
-
-		assert.Len(t, result, 1)
-		assert.Equal(t, "1. \n", result[0])
-	})
-
-	t.Run("title with special characters", func(t *testing.T) {
-		items := []Item{
-			{Title: "Test <script>alert('xss')</script> Article", Link: "https://example.com/article"},
-		}
-
-		result := FormatHackerNews(items)
-
-		assert.Len(t, result, 1)
-		assert.Equal(t, "1. Test <script>alert('xss')</script> Article\nhttps://example.com/article", result[0])
-	})
-
-	t.Run("title with unicode characters", func(t *testing.T) {
-		items := []Item{
-			{Title: "日本語タイトル 🚀", Link: "https://example.com/jp"},
-		}
-
-		result := FormatHackerNews(items)
-
-		assert.Len(t, result, 1)
-		assert.Equal(t, "1. 日本語タイトル 🚀\nhttps://example.com/jp", result[0])
-	})
-
-	t.Run("URL with query parameters and fragments", func(t *testing.T) {
-		items := []Item{
-			{Title: "Article", Link: "https://example.com/article?id=123&ref=hn#section"},
-		}
-
-		result := FormatHackerNews(items)
-
-		assert.Len(t, result, 1)
-		assert.Equal(t, "1. Article\nhttps://example.com/article?id=123&ref=hn#section", result[0])
-	})
-
-	t.Run("title with newlines preserved", func(t *testing.T) {
-		items := []Item{
-			{Title: "Title\nWith\nNewlines", Link: "https://example.com"},
-		}
-
-		result := FormatHackerNews(items)
-
-		assert.Len(t, result, 1)
-		assert.Equal(t, "1. Title\nWith\nNewlines\nhttps://example.com", result[0])
-	})
-
-	t.Run("large number of items maintains correct numbering", func(t *testing.T) {
-		items := make([]Item, 100)
-		for i := 0; i < 100; i++ {
-			items[i] = Item{Title: "Article", Link: "https://example.com"}
-		}
-
-		result := FormatHackerNews(items)
-
-		assert.Len(t, result, 100)
-		assert.Contains(t, result[0], "1. Article")
-		assert.Contains(t, result[9], "10. Article")
-		assert.Contains(t, result[99], "100. Article")
+		require.Len(t, result, 1)
+		assert.Contains(t, result[0], "📰 No Emoji")
 	})
 }

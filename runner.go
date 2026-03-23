@@ -12,12 +12,12 @@ import (
 func run(config *Config) error {
 	log.Println("Starting news fetch and send cycle")
 
-	news, err := getNews(config.RSSURL)
+	newsMap, err := getAllNews(config.Feeds)
 	if err != nil {
 		return fmt.Errorf("failed to get news: %w", err)
 	}
 
-	messages := FormatHackerNews(news)
+	messages := FormatNews(newsMap, config.Feeds)
 
 	lineHTTPClient := &http.Client{Timeout: 30 * time.Second}
 	client := NewLineClient(lineHTTPClient, config.LineAPIURL, config.LineAccessToken, config.TargetUserID)
