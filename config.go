@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // FeedType represents the type of a feed source
@@ -48,6 +49,48 @@ func defaultFeeds() []FeedSource {
 	}
 }
 
+// defaultEnabledFeedNames returns the names of feeds enabled by default
+func defaultEnabledFeedNames() []string {
+	return []string{"Lobsters", "Zenn Trending", "Hacker News"}
+}
+
+// filterFeedsByNames returns only the feeds whose names are in the enabled list,
+// ordered by the enabledNames order.
+func filterFeedsByNames(feeds []FeedSource, enabledNames []string) []FeedSource {
+	feedMap := make(map[string]FeedSource, len(feeds))
+	for _, feed := range feeds {
+		feedMap[feed.Name] = feed
+	}
+
+	filtered := make([]FeedSource, 0, len(enabledNames))
+	for _, name := range enabledNames {
+		name = strings.TrimSpace(name)
+		if feed, ok := feedMap[name]; ok {
+			filtered = append(filtered, feed)
+		}
+	}
+	return filtered
+}
+
+// loadEnabledFeedNames reads enabled feed names from ENABLED_FEEDS env var.
+// Returns nil if not set (meaning use defaults).
+func loadEnabledFeedNames() []string {
+	env := os.Getenv("ENABLED_FEEDS")
+	if env == "" {
+		return nil
+	}
+
+	names := strings.Split(env, ",")
+	result := make([]string, 0, len(names))
+	for _, name := range names {
+		trimmed := strings.TrimSpace(name)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
 // LoadConfig reads configuration from environment variables
 func LoadConfig() (*Config, error) {
 	// Required environment variables
@@ -83,7 +126,7 @@ func LoadConfig() (*Config, error) {
 
 // loadFeeds determines feed sources from environment variables
 func loadFeeds() ([]FeedSource, error) {
-	// Priority 1: FEED_SOURCES JSON
+	// Priority 1: FEED_SOURCES JSON (complete override of feed catalog)
 	if feedJSON := os.Getenv("FEED_SOURCES"); feedJSON != "" {
 		var feeds []FeedSource
 		if err := json.Unmarshal([]byte(feedJSON), &feeds); err != nil {
@@ -99,8 +142,13 @@ func loadFeeds() ([]FeedSource, error) {
 		}, nil
 	}
 
-	// Priority 3: default feeds
-	return defaultFeeds(), nil
+	// Priority 3: default feeds filtered by enabled names
+	allFeeds := defaultFeeds()
+	enabledNames := loadEnabledFeedNames()
+	if enabledNames == nil {
+		enabledNames = defaultEnabledFeedNames()
+	}
+	return filterFeedsByNames(allFeeds, enabledNames), nil
 }
 
 // String returns the string representation of the config (token is masked)

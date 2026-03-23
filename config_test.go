@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -16,6 +17,7 @@ func TestLoadConfig(t *testing.T) {
 		os.Unsetenv("LINE_API_URL")
 		os.Unsetenv("RSS_URL")
 		os.Unsetenv("FEED_SOURCES")
+		os.Unsetenv("ENABLED_FEEDS")
 	}
 
 	t.Run("returns error when LINE_ACCESS_TOKEN is missing", func(t *testing.T) {
@@ -40,7 +42,7 @@ func TestLoadConfig(t *testing.T) {
 		assert.EqualError(t, err, "TARGET_USER_ID environment variable is required")
 	})
 
-	t.Run("loads config with default feeds", func(t *testing.T) {
+	t.Run("loads config with default enabled feeds", func(t *testing.T) {
 		clearEnv()
 		defer clearEnv()
 
@@ -54,9 +56,27 @@ func TestLoadConfig(t *testing.T) {
 		assert.Equal(t, "token123", cfg.LineAccessToken)
 		assert.Equal(t, "user123", cfg.TargetUserID)
 		assert.Equal(t, "https://api.line.me/v2/bot/message/push", cfg.LineAPIURL)
-		assert.Len(t, cfg.Feeds, 9)
-		assert.Equal(t, "はてなブックマーク IT", cfg.Feeds[0].Name)
-		assert.Equal(t, "Hacker News", cfg.Feeds[1].Name)
+		assert.Len(t, cfg.Feeds, 3)
+		assert.Equal(t, "Lobsters", cfg.Feeds[0].Name)
+		assert.Equal(t, "Zenn Trending", cfg.Feeds[1].Name)
+		assert.Equal(t, "Hacker News", cfg.Feeds[2].Name)
+	})
+
+	t.Run("ENABLED_FEEDS overrides default enabled feeds", func(t *testing.T) {
+		clearEnv()
+		defer clearEnv()
+
+		os.Setenv("LINE_ACCESS_TOKEN", "token123")
+		os.Setenv("TARGET_USER_ID", "user123")
+		os.Setenv("ENABLED_FEEDS", "Publickey, TechCrunch")
+
+		cfg, err := LoadConfig()
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		assert.Len(t, cfg.Feeds, 2)
+		assert.Equal(t, "Publickey", cfg.Feeds[0].Name)
+		assert.Equal(t, "TechCrunch", cfg.Feeds[1].Name)
 	})
 
 	t.Run("RSS_URL backward compatibility", func(t *testing.T) {
@@ -186,7 +206,7 @@ func TestConfig_String(t *testing.T) {
 			}
 			assert.Contains(t, result, "user123")
 			assert.Contains(t, result, "https://api.line.me")
-			assert.Contains(t, result, "9 sources")
+			assert.Contains(t, result, fmt.Sprintf("%d sources", len(defaultFeeds())))
 		})
 	}
 }
@@ -234,4 +254,61 @@ func TestDefaultFeeds(t *testing.T) {
 	assert.Equal(t, 5, rssCount)
 	assert.Equal(t, 2, atomCount)
 	assert.Equal(t, 2, redditCount)
+}
+
+func TestFilterFeedsByNames(t *testing.T) {
+	feeds := defaultFeeds()
+
+	t.Run("filters to specified names", func(t *testing.T) {
+		filtered := filterFeedsByNames(feeds, []string{"Hacker News", "Lobsters"})
+		assert.Len(t, filtered, 2)
+		assert.Equal(t, "Hacker News", filtered[0].Name)
+		assert.Equal(t, "Lobsters", filtered[1].Name)
+	})
+
+	t.Run("preserves enabledNames order", func(t *testing.T) {
+		filtered := filterFeedsByNames(feeds, []string{"Lobsters", "Hacker News"})
+		assert.Len(t, filtered, 2)
+		assert.Equal(t, "Lobsters", filtered[0].Name)
+		assert.Equal(t, "Hacker News", filtered[1].Name)
+	})
+
+	t.Run("ignores unknown names", func(t *testing.T) {
+		filtered := filterFeedsByNames(feeds, []string{"NonExistent", "Hacker News"})
+		assert.Len(t, filtered, 1)
+		assert.Equal(t, "Hacker News", filtered[0].Name)
+	})
+
+	t.Run("returns empty slice for no matches", func(t *testing.T) {
+		filtered := filterFeedsByNames(feeds, []string{"NonExistent"})
+		assert.Empty(t, filtered)
+	})
+}
+
+func TestDefaultEnabledFeedNames(t *testing.T) {
+	names := defaultEnabledFeedNames()
+	assert.Equal(t, []string{"Lobsters", "Zenn Trending", "Hacker News"}, names)
+}
+
+func TestLoadEnabledFeedNames(t *testing.T) {
+	t.Run("returns nil when ENABLED_FEEDS is not set", func(t *testing.T) {
+		os.Unsetenv("ENABLED_FEEDS")
+		assert.Nil(t, loadEnabledFeedNames())
+	})
+
+	t.Run("parses comma-separated names", func(t *testing.T) {
+		os.Setenv("ENABLED_FEEDS", "Hacker News, Publickey ,TechCrunch")
+		defer os.Unsetenv("ENABLED_FEEDS")
+
+		names := loadEnabledFeedNames()
+		assert.Equal(t, []string{"Hacker News", "Publickey", "TechCrunch"}, names)
+	})
+
+	t.Run("skips empty entries", func(t *testing.T) {
+		os.Setenv("ENABLED_FEEDS", "Hacker News,,Lobsters,")
+		defer os.Unsetenv("ENABLED_FEEDS")
+
+		names := loadEnabledFeedNames()
+		assert.Equal(t, []string{"Hacker News", "Lobsters"}, names)
+	})
 }
